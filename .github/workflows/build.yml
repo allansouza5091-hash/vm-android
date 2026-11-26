@@ -1,6 +1,7 @@
 name: Build APK
 on:
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -9,10 +10,14 @@ jobs:
 
       - name: Descompactar projeto
         run: |
-          mkdir projeto
-          unzip -q ./*.zip -d projeto
-          SETTINGS=$(find projeto -maxdepth 4 \( -name settings.gradle.kts -o -name settings.gradle \) | head -n 1)
-          echo "PROJ_DIR=$(dirname "$SETTINGS")" >> $GITHUB_ENV
+          mkdir -p "$GITHUB_WORKSPACE/projeto"
+          unzip -q "$GITHUB_WORKSPACE"/*.zip -d "$GITHUB_WORKSPACE/projeto"
+          SETTINGS=$(find "$GITHUB_WORKSPACE/projeto" -maxdepth 5 \( -name settings.gradle.kts -o -name settings.gradle \) | head -n 1)
+          if [ -z "$SETTINGS" ]; then
+            echo "Erro: settings.gradle ou settings.gradle.kts nao encontrado."
+            exit 1
+          fi
+          echo "PROJ_DIR=$(dirname "$SETTINGS")" >> "$GITHUB_ENV"
 
       - uses: actions/setup-java@v4
         with:
@@ -24,20 +29,35 @@ jobs:
           gradle-version: 8.7
 
       - name: Compilar
+        id: compile
         working-directory: ${{ env.PROJ_DIR }}
         run: |
-          gradle assembleDebug --stacktrace > ../../log-build.txt 2>&1 || echo "FALHOU" > ../../falhou.txt
-          cd ../..
-          echo "===== ERRO PRINCIPAL =====" >> $GITHUB_STEP_SUMMARY
-          grep -n -A 12 "What went wrong" log-build.txt | head -n 30 >> $GITHUB_STEP_SUMMARY || true
+          set +e
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleDebug --stacktrace > "$GITHUB_WORKSPACE/log-build.txt" 2>&1
+            EXIT_CODE=$?
+          else
+            gradle assembleDebug --stacktrace > "$GITHUB_WORKSPACE/log-build.txt" 2>&1
+            EXIT_CODE=$?
+          fi
+          set -e
 
-      - uses: actions/upload-artifact@v4
+          echo "===== ERRO PRINCIPAL =====" >> "$GITHUB_STEP_SUMMARY"
+          grep -n -A 12 "What went wrong" "$GITHUB_WORKSPACE/log-build.txt" | head -n 30 >> "$GITHUB_STEP_SUMMARY" || true
+
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "FALHOU" > "$GITHUB_WORKSPACE/falhou.txt"
+            exit 1
+          fi
+
+      - name: Enviar APK e log
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: log-e-apk
           path: |
             log-build.txt
             projeto/**/build/outputs/apk/debug/*.apk
           if-no-files-found: warn
-
-      - name: Marcar falha
-        run: test ! -f falhou.txt
+          
