@@ -6,22 +6,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Descompactar projeto
         run: |
           mkdir projeto
           unzip -q ./*.zip -d projeto
-          GRADLEW=$(find projeto -name gradlew | head -n 1)
-          echo "PROJ_DIR=$(dirname "$GRADLEW")" >> $GITHUB_ENV
+          SETTINGS=$(find projeto -maxdepth 4 \( -name settings.gradle.kts -o -name settings.gradle \) | head -n 1)
+          echo "Achei: $SETTINGS"
+          echo "PROJ_DIR=$(dirname "$SETTINGS")" >> $GITHUB_ENV
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+
+      - name: Aceitar licencas do Android SDK
+        run: yes | sdkmanager --licenses || true
+
       - name: Compilar
         working-directory: ${{ env.PROJ_DIR }}
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug
+        run: gradle assembleDebug --stacktrace
+
       - uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: ${{ env.PROJ_DIR }}/app/build/outputs/apk/debug/*.apk
+          path: projeto/**/build/outputs/apk/debug/*.apk
