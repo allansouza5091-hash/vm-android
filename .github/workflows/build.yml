@@ -12,7 +12,6 @@ jobs:
           mkdir projeto
           unzip -q ./*.zip -d projeto
           SETTINGS=$(find projeto -maxdepth 4 \( -name settings.gradle.kts -o -name settings.gradle \) | head -n 1)
-          echo "Achei: $SETTINGS"
           echo "PROJ_DIR=$(dirname "$SETTINGS")" >> $GITHUB_ENV
 
       - uses: actions/setup-java@v4
@@ -24,14 +23,21 @@ jobs:
         with:
           gradle-version: 8.7
 
-      - name: Aceitar licencas do Android SDK
-        run: yes | sdkmanager --licenses || true
-
       - name: Compilar
         working-directory: ${{ env.PROJ_DIR }}
-        run: gradle assembleDebug --stacktrace
+        run: |
+          gradle assembleDebug --stacktrace > ../../log-build.txt 2>&1 || echo "FALHOU" > ../../falhou.txt
+          cd ../..
+          echo "===== ERRO PRINCIPAL =====" >> $GITHUB_STEP_SUMMARY
+          grep -n -A 12 "What went wrong" log-build.txt | head -n 30 >> $GITHUB_STEP_SUMMARY || true
 
       - uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: projeto/**/build/outputs/apk/debug/*.apk
+          name: log-e-apk
+          path: |
+            log-build.txt
+            projeto/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+
+      - name: Marcar falha
+        run: test ! -f falhou.txt
