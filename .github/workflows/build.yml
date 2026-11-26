@@ -28,6 +28,21 @@ jobs:
         with:
           gradle-version: 9.3.1
 
+      - name: Garantir debug.keystore
+        run: |
+          KS_PATH="$GITHUB_WORKSPACE/projeto/debug.keystore"
+          if [ ! -f "$KS_PATH" ]; then
+            keytool -genkeypair \
+              -keystore "$KS_PATH" \
+              -storepass android \
+              -keypass android \
+              -alias androiddebugkey \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
       - name: Compilar
         id: compile
         working-directory: ${{ env.PROJ_DIR }}
